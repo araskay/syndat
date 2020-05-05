@@ -5,6 +5,9 @@ import sklearn.neighbors as skn
 import sklearn.model_selection as skms
 import datetime as dt
 from scipy import optimize
+import sys
+import parser
+import json
 
 class SynDat:
     '''
@@ -41,6 +44,7 @@ class SynDat:
         self.var_type = None
 
         if calc_kde:
+            self.df = self.to_dt(self.df, self.cols)
             self.df = self.dt_to_ordinal(self.df, self.cols)
             self.df = self.categ_to_lablel(self.df, self.categs)            
             self.var_type = self.get_var_type(self.cols)
@@ -73,6 +77,28 @@ class SynDat:
                 var_type.append('o')
         return var_type
 
+    
+    def to_dt(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
+        '''
+        convet dt cols to datetime type
+
+        Parameters
+        ----------
+        df: data frame
+            input data
+        cols: dict
+            dictionary of var names and their type.
+            allowed types: quant, categ, ord, dt
+            cols should be entered in order (requires python 3.6+)
+
+        Returns
+        -------
+        data frame with updated date cols
+        '''
+        for c in cols:
+            if cols[c] == 'dt':
+                df[c] = pd.to_datetime(df[c])
+        return df
 
     def dt_to_ordinal(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
         '''
@@ -267,5 +293,48 @@ class SynDat:
 
         return df_samp
 
+def load_json(fname: str) -> dict:
+    '''
+    helper function to load json files
 
+    Parameters
+    ----------
+    fname: str
+        json file name
+
+    Returns
+    -------
+    dictionary created from the json file
+    '''
+    with open(fname, 'r') as fid:
+        return json.load(fid)   
+
+if __name__ == '__main__':
+    arg_list = ['data=', 'cols=', 'categs=', 'out=']
+    help_msg = (
+        '\n--------\n'
+        + 'Usage:\n'
+        + 'python syndat.py --data <csv> --cols <json> --categs <json> '
+        + '--out <csv>'
+        + '\n--------\n'
+    )
+    prs = parser.ParseArgs(arg_list, help_msg)
+    params = prs.get_args(sys.argv[1:])
+
+    if (
+        params['data'] == ''
+        or params['cols'] == ''
+        or params['categs'] == ''
+        or params['out'] == ''
+    ):
+        prs.printhelp()
+        sys.exit()
+
+    data = pd.read_csv(params['data'])
+    cols = load_json(params['cols'])
+    categs = load_json(params['categs'])
+
+    samp = SynDat(data, cols, categs).get_sample()
+
+    samp.to_csv(params['out'], index=False)
 
