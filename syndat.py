@@ -3,6 +3,7 @@ import numpy as np
 import statsmodels.nonparametric.kernel_density as smkd
 import sklearn.neighbors as skn
 import sklearn.model_selection as skms
+import sklearn.preprocessing as skp
 import datetime as dt
 from scipy import optimize
 import sys
@@ -15,8 +16,7 @@ class SynDat:
     '''
 
     def __init__(
-        self, data: pd.DataFrame, cols: dict, categs: dict,
-        calc_kde: bool = True
+        self, data: pd.DataFrame, cols: dict, calc_kde: bool = True
     ):
         '''
         Parameters
@@ -27,9 +27,6 @@ class SynDat:
             dictionary of var names and their type.
             allowed types: quant, categ, ord, dt
             cols should be entered in order (requires python 3.6+)
-        categs: dict
-            dictionary of categories and their label mapping
-            example: {'x_categ': {'c1':1, 'c2':2, 'c3':3}}
         calc_kde: bool, default = True
             whether to calculate KDE at object instantiation
 
@@ -39,14 +36,14 @@ class SynDat:
         '''
         self.df = data
         self.cols = cols
-        self.categs = categs
         self.kde = None
         self.var_type = None
+        self.cat_le = None
 
         if calc_kde:
             self.df = self.to_dt(self.df, self.cols)
             self.df = self.dt_to_ordinal(self.df, self.cols)
-            self.df = self.categ_to_lablel(self.df, self.categs)            
+            self.df, self.cat_le = self.categ_to_label(self.df, self.cols)            
             self.var_type = self.get_var_type(self.cols)
             self.kde = self.run_kde()
 
@@ -149,7 +146,7 @@ class SynDat:
         return df
     
 
-    def categ_to_lablel(self, df: pd.DataFrame, categs: dict) -> pd.DataFrame:
+    def categ_to_label(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
         '''
         convert categories to numeric labels
 
@@ -157,20 +154,28 @@ class SynDat:
         ----------
         df: data frame
             input data
-        categs: dict
-            dictionary of categories and their label mapping
-            example: {'x_categ': {'c1':1, 'c2':2, 'c3':3}}
+        cols: dict
+            dictionary of var names and their type.
+            allowed types: quant, categ, ord, dt
+            cols should be entered in order (requires python 3.6+)
 
         Returns
         -------
-        data frame with updated categorical columns            
+        data frame, dict of label encoding            
         '''
-        for c in categs:
-            df[c] = df[c].apply(lambda x: categs[c][x])
-        return df
+        cat_le = dict()
+        for c in cols:
+            if cols[c] == 'categ':
+                le = skp.LabelEncoder()
+                le.fit(df[c])
+                df[c] = le.transform(df[c])
+                cat_le[c] = le
+        return df, cat_le
 
 
-    def label_to_categ(self, df: pd.DataFrame, categs: dict) -> pd.DataFrame:
+    def label_to_categ(
+        self, df: pd.DataFrame, cols: dict, cat_le: dict
+    ) -> pd.DataFrame:
         '''
         convert numeric labels to original categories
 
@@ -178,17 +183,20 @@ class SynDat:
         ----------
         df: data frame
             input data
-        categs: dict
-            dictionary of categories and their label mapping
-            example: {'x_categ': {'c1':1, 'c2':2, 'c3':3}}
+        cols: dict
+            dictionary of var names and their type.
+            allowed types: quant, categ, ord, dt
+            cols should be entered in order (requires python 3.6+)
+        cat_le: dict
+            dict of LabelEncoders
 
         Returns
         -------
         data frame with updated categorical columns            
         '''        
-        for c in categs:
-            inv_mapping = {v:k for k,v in categs[c].items()}
-            df[c] = df[c].apply(lambda x: inv_mapping[x])
+        for c in cols:
+            if cols[c] == 'categ':
+                df[c] = cat_le[c].inverse_transform(df[c].astype(int))
         return df
 
 
@@ -289,7 +297,7 @@ class SynDat:
         df_samp = self.ordinal_to_dt(df_samp, self.cols)
 
         # convert categorical labels back to original categories
-        df_samp = self.label_to_categ(df_samp, self.categs)
+        df_samp = self.label_to_categ(df_samp, self.cols, self.cat_le)
 
         return df_samp
 
@@ -310,31 +318,24 @@ def load_json(fname: str) -> dict:
         return json.load(fid)   
 
 if __name__ == '__main__':
-    arg_list = ['data=', 'cols=', 'categs=', 'out=']
+    arg_list = ['data=', 'cols=', 'out=']
     help_msg = (
         '\n--------\n'
         + 'Usage:\n'
-        + 'python syndat.py --data <csv> --cols <json> --categs <json> '
-        + '--out <csv>'
+        + 'python syndat.py --data <csv> --cols <json> --out <csv>'
         + '\n--------\n'
     )
     prs = parser.ParseArgs(arg_list, help_msg)
     params = prs.get_args(sys.argv[1:])
 
-    if (
-        params['data'] == ''
-        or params['cols'] == ''
-        or params['categs'] == ''
-        or params['out'] == ''
-    ):
+    if params['data'] == '' or params['cols'] == '' or params['out'] == '':
         prs.printhelp()
         sys.exit()
 
     data = pd.read_csv(params['data'])
     cols = load_json(params['cols'])
-    categs = load_json(params['categs'])
 
-    samp = SynDat(data, cols, categs).get_sample()
+    samp = SynDat(data, cols).get_sample()
 
     samp.to_csv(params['out'], index=False)
 
