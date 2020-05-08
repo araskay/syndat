@@ -16,7 +16,8 @@ class SynDat:
     '''
 
     def __init__(
-        self, data: pd.DataFrame, cols: dict, calc_kde: bool = True
+        self, data: pd.DataFrame, cols: dict,
+        dt_format: str = None, calc_kde: bool = True
     ):
         '''
         Parameters
@@ -27,6 +28,7 @@ class SynDat:
             dictionary of var names and their type.
             allowed types: quant, categ, ord, dt
             cols should be entered in order (requires python 3.6+)
+        dt_format: str, default = None
         calc_kde: bool, default = True
             whether to calculate KDE at object instantiation
 
@@ -34,14 +36,15 @@ class SynDat:
         -------
         None
         '''
-        self.df = data
+        self.df = data[cols].copy()
         self.cols = cols
+        self.dt_format = dt_format
         self.kde = None
         self.var_type = None
         self.cat_le = None
 
         if calc_kde:
-            self.df = self.to_dt(self.df, self.cols)
+            self.df = self.to_dt(self.df, self.cols, format=self.dt_format)
             self.df = self.dt_to_ordinal(self.df, self.cols)
             self.df, self.cat_le = self.categ_to_label(self.df, self.cols)            
             self.var_type = self.get_var_type(self.cols)
@@ -75,7 +78,7 @@ class SynDat:
         return var_type
 
     
-    def to_dt(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
+    def to_dt(self, df: pd.DataFrame, cols: dict, dt_format=None) -> pd.DataFrame:
         '''
         convet dt cols to datetime type
 
@@ -94,7 +97,7 @@ class SynDat:
         '''
         for c in cols:
             if cols[c] == 'dt':
-                df[c] = pd.to_datetime(df[c])
+                df[c] = pd.to_datetime(df[c], format=dt_format)
         return df
 
     def dt_to_ordinal(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
