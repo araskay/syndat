@@ -44,7 +44,7 @@ class SynDat:
         self.cat_le = None
 
         if calc_kde:
-            self.df = self.to_dt(self.df, self.cols, format=self.dt_format)
+            self.df = self.to_dt(self.df, self.cols, dt_format=self.dt_format)
             self.df = self.dt_to_ordinal(self.df, self.cols)
             self.df, self.cat_le = self.categ_to_label(self.df, self.cols)            
             self.var_type = self.get_var_type(self.cols)
