@@ -221,7 +221,7 @@ class SynDat:
 
     def rejection_sampling(
         self, kde: smkd.KDEMultivariate, rng: np.ndarray,
-        var_type: list, n: int = 1000
+        var_type: list, M: int = 1, n: int = 1000
     ) -> np.ndarray:
         '''
         rejection sampling
@@ -237,6 +237,8 @@ class SynDat:
             'c': continuous,
             'u': unoderded categorical,
             'o': ordered categorical
+        M: int, default = 1
+            pdf max value
         n: int, default = 1000
             number of sample to generate     
 
@@ -244,12 +246,6 @@ class SynDat:
         -------
         2D array of samples        
         '''
-        # find pdf max
-        res = optimize.minimize(
-            lambda x: -kde.pdf(x), x0=np.array(self.df.median()),
-            method='Nelder-Mead'
-        )
-        M = -res.fun
 
         samp = []
         i = 0
@@ -290,8 +286,19 @@ class SynDat:
         maxs = np.array(self.df.max())
         rng = np.stack((mins,maxs), axis=1)
 
+        # find pdf max
+        '''
+        res = optimize.minimize(
+            lambda x: -self.kde.pdf(x), x0=np.array(self.df.median()),
+            method='Nelder-Mead'
+        )
+        M = -res.fun
+        '''
+        # use value at median as an approximate to pdf's max
+        M = self.kde.pdf(self.df.median())
+
         # rejection sampling
-        samp = self.rejection_sampling(self.kde, rng, self.var_type, n=n)
+        samp = self.rejection_sampling(self.kde, rng, self.var_type, M=M, n=n)
 
         # create df from sample
         df_samp = pd.DataFrame(samp, columns=self.cols)
