@@ -26,7 +26,12 @@ class SynDat:
             original data to generate synthetic data from
         cols: dict
             dictionary of var names and their type.
-            allowed types: quant, categ, ord, dt
+            allowed types:
+                - float
+                - int
+                - ord (ordered discrete)
+                - unord (unordered discrete)
+                - dt (datetime)
             cols should be entered in order (requires python 3.6+)
         dt_format: str, default = None
         calc_kde: bool, default = True
@@ -53,10 +58,7 @@ class SynDat:
     def get_var_type(self, cols: dict) -> list:
         '''
         create a list of var types from cols dict for statsmodel
-        KDEMultivariate:
-        'c': continuous,
-        'u': unoderded categorical,
-        'o': ordered categorical
+        KDEMultivariate
 
         Parameters
         ----------
@@ -69,9 +71,9 @@ class SynDat:
         '''
         var_type = []
         for c in cols:
-            if cols[c] == 'quant' or cols[c] == 'dt':
+            if cols[c] == 'float' or cols[c] == 'int' or cols[c] == 'dt':
                 var_type.append('c')
-            elif cols[c] == 'categ':
+            elif cols[c] == 'unord':
                 var_type.append('u')
             elif cols[c] == 'ord':
                 var_type.append('o')
@@ -88,8 +90,6 @@ class SynDat:
             input data
         cols: dict
             dictionary of var names and their type.
-            allowed types: quant, categ, ord, dt
-            cols should be entered in order (requires python 3.6+)
 
         Returns
         -------
@@ -110,8 +110,6 @@ class SynDat:
             input data
         cols: dict
             dictionary of var names and their type.
-            allowed types: quant, categ, ord, dt
-            cols should be entered in order (requires python 3.6+)
 
         Returns
         -------
@@ -134,8 +132,6 @@ class SynDat:
             input data
         cols: dict
             dictionary of var names and their type.
-            allowed types: quant, categ, ord, dt
-            cols should be entered in order (requires python 3.6+)
 
         Returns
         -------
@@ -148,6 +144,26 @@ class SynDat:
                 )
         return df
     
+    def round_int(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
+        '''
+        convert ordinal to date
+
+        Parameters
+        ----------
+        df: data frame
+            input data
+        cols: dict
+            dictionary of var names and their type.
+
+        Returns
+        -------
+        data frame with updated date cols        
+        '''
+        for c in cols:
+            if cols[c] == 'int':
+                df[c] = df[c].apply(lambda x: int(x))
+        return df
+
 
     def categ_to_label(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
         '''
@@ -159,8 +175,6 @@ class SynDat:
             input data
         cols: dict
             dictionary of var names and their type.
-            allowed types: quant, categ, ord, dt
-            cols should be entered in order (requires python 3.6+)
 
         Returns
         -------
@@ -168,7 +182,7 @@ class SynDat:
         '''
         cat_le = dict()
         for c in cols:
-            if cols[c] == 'categ':
+            if cols[c] == 'unord':
                 le = skp.LabelEncoder()
                 le.fit(df[c])
                 df[c] = le.transform(df[c])
@@ -188,8 +202,6 @@ class SynDat:
             input data
         cols: dict
             dictionary of var names and their type.
-            allowed types: quant, categ, ord, dt
-            cols should be entered in order (requires python 3.6+)
         cat_le: dict
             dict of LabelEncoders
 
@@ -198,7 +210,7 @@ class SynDat:
         data frame with updated categorical columns            
         '''        
         for c in cols:
-            if cols[c] == 'categ':
+            if cols[c] == 'unord':
                 df[c] = cat_le[c].inverse_transform(df[c].astype(int))
         return df
 
@@ -221,7 +233,7 @@ class SynDat:
 
     def rejection_sampling(
         self, kde: smkd.KDEMultivariate, rng: np.ndarray,
-        var_type: list, M: int = 1, n: int = 1000
+        cols: dict, M: int = 1, n: int = 1000
     ) -> np.ndarray:
         '''
         rejection sampling
@@ -232,11 +244,8 @@ class SynDat:
             estimated kde
         rng: array_like
             range of variables in the form of a 2D array of (min, max)
-        var_type: list
-            list of variable types for statsmodel KDEMultivariate
-            'c': continuous,
-            'u': unoderded categorical,
-            'o': ordered categorical
+        cols: dict
+            dictionary of var names and their type.
         M: int, default = 1
             pdf max value
         n: int, default = 1000
@@ -251,14 +260,17 @@ class SynDat:
         i = 0
         while (i<n):
             x = (
-                np.random.rand(len(var_type))
+                np.random.rand(len(cols))
                 * (np.max(rng, axis=-1) - np.min(rng, axis=-1))
                 + np.min(rng, axis=-1)
             )
 
             # round categorical vars to the nearest int
-            x = [round(xi) if var_type[i] != 'c' else xi
-                 for i,xi in enumerate(x)]
+            x = [
+                x[i] if cols[c] == 'float'
+                else round(x[i])
+                for i,c in enumerate(cols)
+            ]
 
             u = np.random.rand()
 
@@ -269,7 +281,7 @@ class SynDat:
         return np.array(samp)
 
     
-    def get_sample(self, n=1000) -> pd.DataFrame:
+    def get_sample(self, n=1000, use_med_approx = False) -> pd.DataFrame:
         '''
         draw random samples from the estimated distribution
 
@@ -287,18 +299,19 @@ class SynDat:
         rng = np.stack((mins,maxs), axis=1)
 
         # find pdf max
-        '''
-        res = optimize.minimize(
-            lambda x: -self.kde.pdf(x), x0=np.array(self.df.median()),
-            method='Nelder-Mead'
-        )
-        M = -res.fun
-        '''
-        # use value at median as an approximate to pdf's max
-        M = self.kde.pdf(self.df.median())
+
+        if use_med_approx:
+            # use value at median as an approximate to pdf's max
+            M = self.kde.pdf(self.df.median())
+        else:
+            res = optimize.minimize(
+                lambda x: -self.kde.pdf(x), x0=np.array(self.df.median()),
+                method='Nelder-Mead'
+            )
+            M = -res.fun
 
         # rejection sampling
-        samp = self.rejection_sampling(self.kde, rng, self.var_type, M=M, n=n)
+        samp = self.rejection_sampling(self.kde, rng, self.cols, M=M, n=n)
 
         # create df from sample
         df_samp = pd.DataFrame(samp, columns=self.cols)
@@ -308,6 +321,9 @@ class SynDat:
 
         # convert categorical labels back to original categories
         df_samp = self.label_to_categ(df_samp, self.cols, self.cat_le)
+
+        # round int vars to the nearest integer
+        df_samp = self.round_int(df_samp, self.cols)
 
         return df_samp
 
