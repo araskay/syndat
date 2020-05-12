@@ -327,6 +327,11 @@ class SynDat:
 
         return df_samp
 
+    
+    def constrain_pk(self, df, pk):
+        return df.groupby(pk).first()
+
+
 def load_json(fname: str) -> dict:
     '''
     helper function to load json files
