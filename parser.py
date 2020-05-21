@@ -36,6 +36,9 @@ class ParseArgs:
         Returns
         -------
         dict of parsed args, e.g., dict {'flag': bool, 'in': str, 'out': str}
+            For arguments returning a value, a str will be returned with a
+            default value of ''. For flags, a bool will be returned with a
+            defualt value of False.
         '''
         try:
             (opts,_) = getopt.getopt(args,'h', self.arg_list)

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-import statsmodels.nonparametric.kernel_density as smkd
+from statsmodels.nonparametric.kernel_density import KDEMultivariate
+from statsmodels.nonparametric.kde import KDEUnivariate
 import sklearn.neighbors as skn
 import sklearn.model_selection as skms
 import sklearn.preprocessing as skp
@@ -17,7 +18,8 @@ class SynDat:
 
     def __init__(
         self, data: pd.DataFrame, cols: dict,
-        dt_format: str = None, calc_kde: bool = True
+        convert_dt: bool = False, dt_format: str = None,
+        independent_cols: bool = False, calc_kde: bool = True
     ):
         '''
         Parameters
@@ -33,7 +35,12 @@ class SynDat:
                 - unord (unordered discrete)
                 - dt (datetime)
             cols should be entered in order (requires python 3.6+)
+        convert_dt: bool, default = False
+            whether to convert dt cols to pandas datetime format
         dt_format: str, default = None
+            date format to use for coverting strings into pandas datetime
+        independent_cols: bool, default = False
+            whether to treat column as idenpendent
         calc_kde: bool, default = True
             whether to calculate KDE at object instantiation
 
@@ -44,16 +51,23 @@ class SynDat:
         self.df = data[cols].copy()
         self.cols = cols
         self.dt_format = dt_format
+        self.independent_cols = independent_cols
         self.kde = None
         self.var_type = None
         self.cat_le = None
 
         if calc_kde:
-            self.df = self.to_dt(self.df, self.cols, dt_format=self.dt_format)
+            if convert_dt:
+                self.df = self.to_dt(
+                    self.df, self.cols, dt_format=self.dt_format
+                )
             self.df = self.dt_to_ordinal(self.df, self.cols)
             self.df, self.cat_le = self.categ_to_label(self.df, self.cols)            
             self.var_type = self.get_var_type(self.cols)
-            self.kde = self.run_kde()
+            if self.independent_cols:
+                self.kde = self.run_kde_indep()
+            else:
+                self.kde = self.run_kde()
 
     def get_var_type(self, cols: dict) -> list:
         '''
@@ -165,7 +179,9 @@ class SynDat:
         return df
 
 
-    def categ_to_label(self, df: pd.DataFrame, cols: dict) -> pd.DataFrame:
+    def categ_to_label(
+        self, df: pd.DataFrame, cols: dict, convert_to_str: bool = True
+    ) -> pd.DataFrame:
         '''
         convert categories to numeric labels
 
@@ -175,6 +191,9 @@ class SynDat:
             input data
         cols: dict
             dictionary of var names and their type.
+        convert_to_str: bool, default = True
+            whether to convert unordered categorical data to str -
+            especially useful when there are mixed types and/or Nulls
 
         Returns
         -------
@@ -183,9 +202,10 @@ class SynDat:
         cat_le = dict()
         for c in cols:
             if cols[c] == 'unord':
+                if convert_to_str:
+                    df[c] = df[c].astype(str)
                 le = skp.LabelEncoder()
-                le.fit(df[c])
-                df[c] = le.transform(df[c])
+                df[c] = le.fit_transform(df[c])
                 cat_le[c] = le
         return df, cat_le
 
@@ -215,7 +235,7 @@ class SynDat:
         return df
 
 
-    def run_kde(self) -> smkd.KDEMultivariate:
+    def run_kde(self) -> KDEMultivariate:
         '''
         run kernel density estimation and return the estimated density
 
@@ -227,12 +247,31 @@ class SynDat:
         -------
         estimated KDE
         '''
-        kde = smkd.KDEMultivariate(self.df, var_type=self.var_type)
+        kde = KDEMultivariate(self.df, var_type=self.var_type)
         return kde
+
+    def run_kde_indep(self) -> dict:
+        '''
+        run KDE independtly on each col and return dict of estimated KDEs
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        dict of estimated KDEs
+        '''
+        kde_dict = dict()
+        for c in self.cols:
+            kde = KDEUnivariate(self.df[c].astype(float))
+            kde.fit()
+            kde_dict[c] = kde
+        return kde_dict
 
 
     def rejection_sampling(
-        self, kde: smkd.KDEMultivariate, rng: np.ndarray,
+        self, kde: KDEMultivariate, rng: np.ndarray,
         cols: dict, M: int = 1, n: int = 1000
     ) -> np.ndarray:
         '''
@@ -283,38 +322,46 @@ class SynDat:
     
     def get_sample(self, n=1000, use_med_approx = False) -> pd.DataFrame:
         '''
-        draw random samples from the estimated distribution
+        draw random samples from the estimated distribution(s)
 
         Parameters
         ----------
         n: int, default = 1000
             number of samples to generate
+        use_med_approx: bool, default = False
+            whether to use pdf value at median as a estimate for max -
+            only applicable to multivariate data (i.e., dependent cols)
 
         Returns
         -------
         data frame of synthetic data
         '''
-        mins = np.array(self.df.min())
-        maxs = np.array(self.df.max())
-        rng = np.stack((mins,maxs), axis=1)
-
-        # find pdf max
-
-        if use_med_approx:
-            # use value at median as an approximate to pdf's max
-            M = self.kde.pdf(self.df.median())
+        if self.independent_cols:
+            df_samp = pd.DataFrame()
+            for c in self.cols:
+                df_samp[c] = np.random.choice(self.kde[c].icdf, n)
         else:
-            res = optimize.minimize(
-                lambda x: -self.kde.pdf(x), x0=np.array(self.df.median()),
-                method='Nelder-Mead'
-            )
-            M = -res.fun
+            mins = np.array(self.df.min())
+            maxs = np.array(self.df.max())
+            rng = np.stack((mins,maxs), axis=1)
 
-        # rejection sampling
-        samp = self.rejection_sampling(self.kde, rng, self.cols, M=M, n=n)
+            # find pdf max
+            if use_med_approx:
+                # use value at median as an approximate to pdf's max
+                M = self.kde.pdf(self.df.median())
+            else:
+                res = optimize.minimize(
+                    lambda x: -self.kde.pdf(x), x0=np.array(self.df.median()),
+                    method='Nelder-Mead'
+                )
+                M = -res.fun
+            print('M =', M)
 
-        # create df from sample
-        df_samp = pd.DataFrame(samp, columns=self.cols)
+            # rejection sampling
+            samp = self.rejection_sampling(self.kde, rng, self.cols, M=M, n=n)
+
+            # create df from sample
+            df_samp = pd.DataFrame(samp, columns=self.cols)
 
         # convert ordinal back to dt
         df_samp = self.ordinal_to_dt(df_samp, self.cols)
@@ -327,9 +374,9 @@ class SynDat:
 
         return df_samp
 
-    
+
     def constrain_pk(self, df, pk):
-        return df.groupby(pk).first()
+        return df.groupby(pk).first().reset_index()
 
 
 def load_json(fname: str) -> dict:
@@ -349,15 +396,22 @@ def load_json(fname: str) -> dict:
         return json.load(fid)   
 
 if __name__ == '__main__':
-    arg_list = ['data=', 'cols=', 'out=']
+    arg_list = [
+        'data=', 'cols=', 'out=', 'dt_format=', 'univariate',
+        'sampsize='
+    ]
     help_msg = (
         '\n--------\n'
         + 'Usage:\n'
-        + 'python syndat.py --data <csv> --cols <json> --out <csv>'
+        + 'python syndat.py --data <csv> --cols <json> --out <csv> '
+        + '[--dt_format <date/time format>] [--univariate] '
+        + '[--sampsize <desired sample size, default = 1000>]'
         + '\n--------\n'
     )
     prs = parser.ParseArgs(arg_list, help_msg)
     params = prs.get_args(sys.argv[1:])
+
+    
 
     if params['data'] == '' or params['cols'] == '' or params['out'] == '':
         prs.printhelp()
@@ -366,7 +420,22 @@ if __name__ == '__main__':
     data = pd.read_csv(params['data'])
     cols = load_json(params['cols'])
 
-    samp = SynDat(data, cols).get_sample()
+    dt_format = None
+    if len(params['dt_format']):
+        dt_format = params['dt_format']
+
+    n = 1000
+    if len(params['sampsize']):
+        n = int(params['sampsize'])
+
+    sd = SynDat(
+        data, cols,
+        convert_dt=True,
+        dt_format=dt_format,
+        independent_cols=params['univariate']
+    )
+    
+    samp = sd.get_sample(n=n)
 
     samp.to_csv(params['out'], index=False)
 
