@@ -355,6 +355,10 @@ class SynDat:
                     method='Nelder-Mead'
                 )
                 M = -res.fun
+            
+            if np.isnan(M):
+                raise ValueError('Encountered NAs in the data')
+
             print('M =', M)
 
             # rejection sampling
