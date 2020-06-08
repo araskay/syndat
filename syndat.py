@@ -272,7 +272,7 @@ class SynDat:
 
     def rejection_sampling(
         self, kde: KDEMultivariate, rng: np.ndarray,
-        cols: dict, M: int = 1, n: int = 1000
+        cols: dict, M: int = 1, n: int = 1000, verbose: bool = False
     ) -> np.ndarray:
         '''
         rejection sampling
@@ -288,7 +288,9 @@ class SynDat:
         M: int, default = 1
             pdf max value
         n: int, default = 1000
-            number of sample to generate     
+            number of sample to generate
+        verbose: bool, default = False
+            whether to show verbose outputs 
 
         Returns
         -------
@@ -316,11 +318,17 @@ class SynDat:
             if u < kde.pdf(x) / M:
                 samp.append(x)
                 i += 1
+                if verbose:
+                    if i % 100 == 0:
+                        print('sampled',i,'out of',n)
 
         return np.array(samp)
 
     
-    def get_sample(self, n=1000, use_med_approx = False) -> pd.DataFrame:
+    def get_sample(
+        self, n: int = 1000, use_med_approx: bool = False,
+        verbose: bool = False
+    ) -> pd.DataFrame:
         '''
         draw random samples from the estimated distribution(s)
 
@@ -331,6 +339,8 @@ class SynDat:
         use_med_approx: bool, default = False
             whether to use pdf value at median as a estimate for max -
             only applicable to multivariate data (i.e., dependent cols)
+        verbose: bool, default = False
+            whether to show verbose outputs 
 
         Returns
         -------
@@ -341,6 +351,21 @@ class SynDat:
             for c in self.cols:
                 df_samp[c] = np.random.choice(self.kde[c].icdf, n)
         else:
+            # check for NAs in quantitative cols
+            quant_cols = [
+                x for x in self.cols
+                if self.cols[x] in ['int','float']
+            ]
+            na_count = self.df[quant_cols].isnull().sum()
+            na_cols = [x for x in na_count.index if na_count[x]>0]
+            if na_count.sum()>0:
+                raise ValueError(
+                    ('The following quantitative (float/int) columns have NAs: '
+                    + str(na_cols))
+                    + 'Consider imputing NAs or using the univariate estimate.'
+                    
+                )            
+
             mins = np.array(self.df.min())
             maxs = np.array(self.df.max())
             rng = np.stack((mins,maxs), axis=1)
@@ -355,14 +380,14 @@ class SynDat:
                     method='Nelder-Mead'
                 )
                 M = -res.fun
-            
-            if np.isnan(M):
-                raise ValueError('Encountered NAs in the data')
 
-            print('M =', M)
+            if verbose:
+                print('M =', M)
 
             # rejection sampling
-            samp = self.rejection_sampling(self.kde, rng, self.cols, M=M, n=n)
+            samp = self.rejection_sampling(
+                self.kde, rng, self.cols, M=M, n=n, verbose = verbose
+            )
 
             # create df from sample
             df_samp = pd.DataFrame(samp, columns=self.cols)
