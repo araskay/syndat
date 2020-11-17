@@ -19,7 +19,8 @@ class SynDat:
     def __init__(
         self, data: pd.DataFrame, cols: dict,
         convert_dt: bool = False, dt_format: str = None,
-        independent_cols: bool = False, calc_kde: bool = True
+        independent_cols: bool = False, calc_kde: bool = True,
+        verbose=False
     ):
         '''
         Parameters
@@ -43,6 +44,8 @@ class SynDat:
             whether to treat column as idenpendent
         calc_kde: bool, default = True
             whether to calculate KDE at object instantiation
+        verbose: bool, default = False
+            whether to print verbose info
 
         Returns
         -------
@@ -55,6 +58,8 @@ class SynDat:
         self.kde = None
         self.var_type = None
         self.cat_le = None
+        self.verbose = verbose
+
 
         if calc_kde:
             if convert_dt:
@@ -65,7 +70,7 @@ class SynDat:
             self.df, self.cat_le = self.categ_to_label(self.df, self.cols)            
             self.var_type = self.get_var_type(self.cols)
             if self.independent_cols:
-                self.kde = self.run_kde_indep()
+                self.kde = self.run_kde_indep(verbose=self.verbose)
             else:
                 self.kde = self.run_kde()
 
@@ -83,6 +88,8 @@ class SynDat:
         -------
         list of var types
         '''
+        if self.verbose:
+            print('getting var types')
         var_type = []
         for c in cols:
             if cols[c] == 'float' or cols[c] == 'int' or cols[c] == 'dt':
@@ -130,8 +137,12 @@ class SynDat:
         data frame with updated date cols
 
         '''
+        if self.verbose:
+            print('converting dt to ordinal')
         for c in cols:
             if cols[c] == 'dt':
+                if self.verbose:
+                    print(c)
                 df[c] = df[c].apply(lambda x: x.toordinal())
         return df
 
@@ -199,9 +210,13 @@ class SynDat:
         -------
         data frame, dict of label encoding            
         '''
+        if self.verbose:
+            print('converting categorical to label')
         cat_le = dict()
         for c in cols:
             if cols[c] == 'unord':
+                if self.verbose:
+                    print(c)
                 if convert_to_str:
                     df[c] = df[c].astype(str)
                 le = skp.LabelEncoder()
@@ -250,7 +265,7 @@ class SynDat:
         kde = KDEMultivariate(self.df, var_type=self.var_type)
         return kde
 
-    def run_kde_indep(self) -> dict:
+    def run_kde_indep(self, verbose=False) -> dict:
         '''
         run KDE independtly on each col and return dict of estimated KDEs
 
@@ -262,10 +277,18 @@ class SynDat:
         -------
         dict of estimated KDEs
         '''
+        if verbose:
+            print('calculating UV KDE')
         kde_dict = dict()
         for c in self.cols:
+            if verbose:
+                print(c)
+            if self.df[c].std() == 0:
+                bw = 1
+            else:
+                bw = 'normal_reference'
             kde = KDEUnivariate(self.df[c].astype(float))
-            kde.fit()
+            kde.fit(bw=bw)
             kde_dict[c] = kde
         return kde_dict
 
