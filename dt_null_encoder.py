@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-def encode(df, cols, null_date=datetime.strptime('1900-01-01', '%Y-%m-%d')):
+def encode(df, cols, null_date=pd.Timestamp.min):
     for c in cols:
         if cols[c] == 'dt':
             df.loc[df[c].isnull(),c] = null_date # use this old date to indicate nulls
