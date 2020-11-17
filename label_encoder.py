@@ -7,9 +7,10 @@ class LabelEncoder:
     def __init__(self, grp_dict, verbose = False):
         self.grp_dict = grp_dict
         self.le_dict = dict()
-        self.get_encoders()
+        self.get_encoders(verbose=verbose)
+        
 
-    def get_encoders(self):
+    def get_encoders(self, verbose=False):
         if verbose:
             print('Getting encoders...')
         for grp in self.grp_dict:
@@ -25,7 +26,7 @@ class LabelEncoder:
             self.le_dict[grp] = le
 
             
-    def encode(self, df, encode_dict, drop_na = True, verbose = False):
+    def encode(self, df, encode_dict, verbose = False, exclude_na=True):
         out_df = df.copy()
         if verbose:
             print('Encoding...')
@@ -35,7 +36,7 @@ class LabelEncoder:
             for c in encode_dict[grp]:
                 if verbose:
                     print('   ',c)
-                if drop_na:
+                if exclude_na:
                     out_df.loc[df[c].notnull(),c] = (
                         self.le_dict[grp].transform(df.loc[df[c].notnull(),c])
                     )
