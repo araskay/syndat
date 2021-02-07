@@ -19,7 +19,7 @@ class SynDat:
     def __init__(
         self, data: pd.DataFrame, cols: dict,
         convert_dt: bool = False, dt_format: str = None,
-        independent_cols: bool = False, calc_kde: bool = True,
+independent_colsindependent_cols        multivariate: bool = False, calc_kde: bool = True,
         verbose=False
     ):
         '''
@@ -40,8 +40,8 @@ class SynDat:
             whether to convert dt cols to pandas datetime format
         dt_format: str, default = None
             date format to use for coverting strings into pandas datetime
-        independent_cols: bool, default = False
-            whether to treat column as idenpendent
+        multivariate: bool, default = False
+            whether to use multivariate kernel density estimation
         calc_kde: bool, default = True
             whether to calculate KDE at object instantiation
         verbose: bool, default = False
@@ -54,7 +54,7 @@ class SynDat:
         self.df = data[cols].copy()
         self.cols = cols
         self.dt_format = dt_format
-        self.independent_cols = independent_cols
+        self.multivariate = multivariate
         self.kde = None
         self.var_type = None
         self.cat_le = None
@@ -69,10 +69,11 @@ class SynDat:
             self.df = self.dt_to_ordinal(self.df, self.cols)
             self.df, self.cat_le = self.categ_to_label(self.df, self.cols)            
             self.var_type = self.get_var_type(self.cols)
-            if self.independent_cols:
-                self.kde = self.run_kde_indep(verbose=self.verbose)
+            if self.multivariate:
+                self.kde = self.run_kde_mv()
             else:
-                self.kde = self.run_kde()
+                self.kde = self.run_kde_uv(verbose=self.verbose)
+                
 
     def get_var_type(self, cols: dict) -> list:
         '''
@@ -250,7 +251,7 @@ class SynDat:
         return df
 
 
-    def run_kde(self) -> KDEMultivariate:
+    def run_kde_mv(self) -> KDEMultivariate:
         '''
         run kernel density estimation and return the estimated density
 
@@ -265,7 +266,7 @@ class SynDat:
         kde = KDEMultivariate(self.df, var_type=self.var_type)
         return kde
 
-    def run_kde_indep(self, verbose=False) -> dict:
+    def run_kde_uv(self, verbose=False) -> dict:
         '''
         run KDE independtly on each col and return dict of estimated KDEs
 
@@ -369,7 +370,7 @@ class SynDat:
         -------
         data frame of synthetic data
         '''
-        if self.independent_cols:
+        if not self.multivariate:
             df_samp = pd.DataFrame()
             for c in self.cols:
                 df_samp[c] = np.random.choice(self.kde[c].icdf, n)
@@ -431,63 +432,4 @@ class SynDat:
         return df.groupby(pk).first().reset_index()
 
 
-def load_json(fname: str) -> dict:
-    '''
-    helper function to load json files
-
-    Parameters
-    ----------
-    fname: str
-        json file name
-
-    Returns
-    -------
-    dictionary created from the json file
-    '''
-    with open(fname, 'r') as fid:
-        return json.load(fid)   
-
-if __name__ == '__main__':
-    arg_list = [
-        'data=', 'cols=', 'out=', 'dt_format=', 'univariate',
-        'sampsize='
-    ]
-    help_msg = (
-        '\n--------\n'
-        + 'Usage:\n'
-        + 'python syndat.py --data <csv> --cols <json> --out <csv> '
-        + '[--dt_format <date/time format>] [--univariate] '
-        + '[--sampsize <desired sample size, default = 1000>]'
-        + '\n--------\n'
-    )
-    prs = parser.ParseArgs(arg_list, help_msg)
-    params = prs.get_args(sys.argv[1:])
-
-    
-
-    if params['data'] == '' or params['cols'] == '' or params['out'] == '':
-        prs.printhelp()
-        sys.exit()
-
-    data = pd.read_csv(params['data'])
-    cols = load_json(params['cols'])
-
-    dt_format = None
-    if len(params['dt_format']):
-        dt_format = params['dt_format']
-
-    n = 1000
-    if len(params['sampsize']):
-        n = int(params['sampsize'])
-
-    sd = SynDat(
-        data, cols,
-        convert_dt=True,
-        dt_format=dt_format,
-        independent_cols=params['univariate']
-    )
-    
-    samp = sd.get_sample(n=n)
-
-    samp.to_csv(params['out'], index=False)
 
