@@ -428,8 +428,3 @@ independent_colsindependent_cols        multivariate: bool = False, calc_kde: bo
         return df_samp
 
 
-    def constrain_pk(self, df, pk):
-        return df.groupby(pk).first().reset_index()
-
-
-
