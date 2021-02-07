@@ -50,4 +50,4 @@ cols = {'x_continuous':'float', 'x_discrete':'int', 'x_categ':'unord', 'x_date':
 | int, ord | NA’s must be imputed or removed NA’s prior to passing the data to SynDat.|
 | float | For the multivariate approach, NA’s must be imputed or removed NA’s prior to passing the data to SynDat. The univariate approach can handle NA’s - the synthetic data will have NA's with the same probability as the original data|
 | dt | NA’s must be imputed or removed before prior to passing the data to SynDat. If NA values are meaningful (e.g., a future date) it is recommended to replace them with a designated date prior to passing the data to SynDat using the dt_null_encoder utility. Please refer to the usage notebook for details. |
-                                                                                                                                                                                                                                                                                 |
+
