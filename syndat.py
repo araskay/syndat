@@ -8,8 +8,6 @@ import sklearn.preprocessing as skp
 import datetime as dt
 from scipy import optimize
 import sys
-import parser
-import json
 
 class SynDat:
     '''
@@ -19,7 +17,7 @@ class SynDat:
     def __init__(
         self, data: pd.DataFrame, cols: dict,
         convert_dt: bool = False, dt_format: str = None,
-independent_colsindependent_cols        multivariate: bool = False, calc_kde: bool = True,
+        multivariate: bool = False, calc_kde: bool = True,
         verbose=False
     ):
         '''
