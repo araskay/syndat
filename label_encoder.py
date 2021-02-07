@@ -44,3 +44,8 @@ class LabelEncoder:
                 else:
                     out_df[c] = self.le_dict[grp].transform(df[c])
         return out_df
+
+    def add_prefix(self, df, prefix_dict):
+        for c in prefix_dict:
+            df[c] = df[c].apply(lambda x: prefix_dict[c]+str(x))
+        return(df)
