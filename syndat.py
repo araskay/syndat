@@ -2,12 +2,9 @@ import pandas as pd
 import numpy as np
 from statsmodels.nonparametric.kernel_density import KDEMultivariate
 from statsmodels.nonparametric.kde import KDEUnivariate
-import sklearn.neighbors as skn
-import sklearn.model_selection as skms
 import sklearn.preprocessing as skp
 import datetime as dt
 from scipy import optimize
-import sys
 
 class SynDat:
     '''
@@ -185,7 +182,9 @@ class SynDat:
         '''
         for c in cols:
             if cols[c] == 'int':
-                df[c] = df[c].apply(lambda x: int(x))
+                df.loc[df[c].notnull(), c] = (
+                    df.loc[df[c].notnull(), c].apply(lambda x: int(x))
+                )
         return df
 
 
@@ -337,12 +336,17 @@ class SynDat:
 
             u = np.random.rand()
 
+            verbose_interval = int(n/100)
+
             if u < kde.pdf(x) / M:
                 samp.append(x)
                 i += 1
                 if verbose:
-                    if i % 100 == 0:
-                        print('sampled',i,'out of',n)
+                    if i % verbose_interval == 0:
+                        print(
+                            'sampled {0} out of {1} ({2}%)'.
+                            format(i,n,round(i/n*100.0))
+                        )
 
         return np.array(samp)
 
