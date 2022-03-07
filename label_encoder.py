@@ -1,6 +1,12 @@
 import sklearn.preprocessing as skp
 from functools import reduce
 import numpy as np
+import math
+
+def homogeneous_type(grp):
+    return (
+        True if len(set([x.dtype for x in grp])) == 1 else False
+    )
 
 class LabelEncoder:
     
@@ -16,6 +22,8 @@ class LabelEncoder:
         for grp in self.grp_dict:
             if verbose:
                 print(grp)
+            if not homogeneous_type(self.grp_dict[grp]):
+                raise ValueError('{} contains mixed type data'.format(grp))                
             le = skp.LabelEncoder()
             concat = reduce(
                 lambda x,y: np.concatenate((np.array(x),np.array(y))),
@@ -45,7 +53,72 @@ class LabelEncoder:
                     out_df[c] = self.le_dict[grp].transform(df[c])
         return out_df
 
-    def add_prefix(self, df, prefix_dict):
-        for c in prefix_dict:
-            df[c] = df[c].apply(lambda x: prefix_dict[c]+str(x))
-        return(df)
+def add_prefix(df, prefix_dict, verbose=False):
+    for c in prefix_dict:
+        if verbose:
+            print(c)
+        if c in df.columns:
+            df[c] = df[c].apply(
+                lambda x: prefix_dict[c]+str(int(x)) if not math.isnan(x) else np.nan
+            )
+            if verbose:
+                print('    Done!')
+        else:
+            if verbose:
+                print('    Not a column. Ignoring!')
+    return(df)
+
+def get_ndigits(x):
+    '''
+    helper fx to calculate number of digits
+    '''
+    x = abs(x)
+    n = 0
+    while x > 0:
+        n += 1
+        x = x // 10
+    return n
+
+def le2id(a, n_digits, prefix):
+    '''
+    convert label encodings to numeric ids
+    
+    parameters
+    ----------
+    a: array like
+        input array
+    n_digit: int
+        number of digits for ids (including prefix)
+    prefix: int
+        numeric prefix to use for ids
+        
+    returns
+    -------
+    numpy array
+        ids
+    '''
+    n_zeros = n_digits - get_ndigits(prefix)
+
+    if np.nanmax(a) > 10**n_zeros:
+        raise ValueError("n_digits is not large enough to cover the range of the given array. Consider increasing n_digits")
+
+    a = np.array(a) + prefix * 10**n_zeros
+    
+    return a
+
+def covnert_le_to_id(df, le2id_dict, verbose=False):
+    for col in le2id_dict:
+        if verbose:
+            print(col)
+        if col in df.columns:
+            df[col] = le2id(
+                df[col],
+                n_digits=le2id_dict[col]['n_digits'],
+                prefix=le2id_dict[col]['prefix']
+            )
+            if verbose:
+                print('    Done!')
+        else:
+            if verbose:
+                print('    Not a column. Ignoring!')
+    return df         
