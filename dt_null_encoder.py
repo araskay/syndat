@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
 def encode(df, cols, null_date=pd.Timestamp.min):
     for c in cols:
