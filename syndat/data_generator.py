@@ -6,7 +6,7 @@ import sklearn.preprocessing as skp
 import datetime as dt
 from scipy import optimize
 
-class SynDat:
+class DataGenerator:
     '''
     generate synthetic data from an existing data set
     '''
@@ -46,7 +46,7 @@ class SynDat:
         -------
         None
         '''
-        self.df = data[cols].copy()
+        self.df = data[list(cols.keys())].copy()
         self.cols = cols
         self.dt_format = dt_format
         self.multivariate = multivariate
